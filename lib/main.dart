@@ -54,6 +54,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String? _error;
@@ -64,6 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _usernameController.dispose();
     super.dispose();
   }
 
@@ -76,8 +78,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final String email = _emailController.text.trim();
       final String password = _passwordController.text.trim();
+      final String username = _usernameController.text.trim();
 
-      if (email.isEmpty || password.isEmpty) {
+      if (email.isEmpty || password.isEmpty || (_isSignUp && username.isEmpty)) {
         setState(() {
           _error = 'Please fill in all fields';
           _isLoading = false;
@@ -86,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (_isSignUp) {
-        await _signUp(email, password);
+        await _signUp(email, password, username);
       } else {
         await _login(email, password);
       }
@@ -146,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signUp(String email, String password) async {
+  Future<void> _signUp(String email, String password, String username) async {
     try {
       final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -154,11 +157,27 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (userCredential.user != null) {
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const ExtinguisherListScreen()),
-          );
+        try {
+          await _firestore.collection(AppConstants.usersCollection).add({
+            AppConstants.emailField: email,
+            'username': username,
+            AppConstants.userIdField: userCredential.user!.uid,
+            AppConstants.createdAtField: FieldValue.serverTimestamp(),
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Account created successfully!')),
+            );
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const ExtinguisherListScreen()),
+            );
+          }
+        } catch (firestoreError) {
+          setState(() {
+            _error = 'Sign up succeeded, but failed to save user data: '
+                '\n${firestoreError.toString()}';
+          });
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -208,6 +227,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.deepPurple),
                       ),
                       const SizedBox(height: 32),
+                      TextField(
+                        controller: _usernameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          prefixIcon: Icon(Icons.person),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       TextField(
                         controller: _emailController,
                         decoration: InputDecoration(
