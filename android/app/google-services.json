@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "227025902580",
+    "project_id": "blood-donation-app-eb901",
+    "storage_bucket": "blood-donation-app-eb901.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:227025902580:android:80571cbcb5dd0f395d37a1",
+        "android_client_info": {
+          "package_name": "com.example.fire_extinguisher_manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXBr5SllSBGZPkC9i1ByV-FTlawUmboKY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:227025902580:android:08cdaa9dcca1ee055d37a1",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXBr5SllSBGZPkC9i1ByV-FTlawUmboKY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
