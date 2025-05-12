@@ -822,8 +822,12 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
   }
 
   Widget _buildStatsPage() {
+    final user = FirebaseAuth.instance.currentUser;
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('fire').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('fire')
+          .where('userId', isEqualTo: user?.uid)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
