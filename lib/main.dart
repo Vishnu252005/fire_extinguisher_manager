@@ -325,6 +325,8 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _sortBy = 'expiry'; // 'expiry', 'name', 'status'
+  String _selectedCategory = 'All';
+  final List<String> _categories = ['All', 'Kitchen', 'Office', 'Warehouse', 'Factory', 'Other'];
 
   @override
   void initState() {
@@ -483,6 +485,29 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                     },
                   ),
                   const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _categories.map((category) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: FilterChip(
+                            label: Text(category),
+                            selected: _selectedCategory == category,
+                            onSelected: (bool selected) {
+                              setState(() {
+                                _selectedCategory = selected ? category : 'All';
+                              });
+                            },
+                            backgroundColor: Colors.grey.shade200,
+                            selectedColor: Colors.deepPurple.shade200,
+                            checkmarkColor: Colors.deepPurple,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -527,7 +552,15 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                   return const Center(child: Text('No extinguishers found.'));
                 }
 
-                final sortedAndFilteredDocs = _sortAndFilterDocs(docs);
+                var filteredDocs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = (data['name'] ?? '').toString().toLowerCase();
+                  final category = (data['category'] ?? 'Other').toString();
+                  return name.contains(_searchQuery.toLowerCase()) &&
+                         (_selectedCategory == 'All' || category == _selectedCategory);
+                }).toList();
+
+                final sortedAndFilteredDocs = _sortAndFilterDocs(filteredDocs);
                 if (sortedAndFilteredDocs.isEmpty) {
                   return const Center(child: Text('No matching extinguishers found.'));
                 }
@@ -588,13 +621,15 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                     final expiry = expiryTimestamp?.toDate() ?? DateTime.now();
                     final expired = expiry.isBefore(DateTime.now());
                     final expiresSoon = expiry.difference(DateTime.now()).inMinutes < 5 && !expired;
+                    final category = data['category'] ?? 'Other';
+                    final notes = data['notes'] as String?;
+
                     return Card(
                       elevation: 4,
                       margin: const EdgeInsets.symmetric(vertical: 8),
                       color: _getExpiryColor(expiry),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      child: ExpansionTile(
                         leading: CircleAvatar(
                           backgroundColor: expired
                               ? Colors.red
@@ -610,68 +645,117 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                           name,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
-                        subtitle: Text(
-                          'Expiry: ' + DateFormat('yyyy-MM-dd HH:mm').format(expiry),
-                          style: TextStyle(
-                            color: expired
-                                ? Colors.red.shade700
-                                : (expiresSoon ? Colors.orange.shade800 : Colors.black87),
-                            fontWeight: FontWeight.w500,
-                          ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Expiry: ' + DateFormat('yyyy-MM-dd HH:mm').format(expiry),
+                              style: TextStyle(
+                                color: expired
+                                    ? Colors.red.shade700
+                                    : (expiresSoon ? Colors.orange.shade800 : Colors.black87),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              'Category: $category',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               icon: const Icon(Icons.edit, color: Colors.deepPurple),
-                              tooltip: 'Edit Expiry',
+                              tooltip: 'Edit',
                               onPressed: () async {
-                                final DateTime minDate = DateTime.now().add(const Duration(days: 10));
-                                DateTime? pickedDate = await showDatePicker(
+                                final TextEditingController editNameController = TextEditingController(text: name);
+                                final TextEditingController editNotesController = TextEditingController(text: notes ?? '');
+                                String editCategory = category;
+                                
+                                await showDialog(
                                   context: context,
-                                  initialDate: expiry.isAfter(minDate) ? expiry : minDate,
-                                  firstDate: minDate,
-                                  lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                                  builder: (context) => StatefulBuilder(
+                                    builder: (context, setState) => AlertDialog(
+                                      title: const Text('Edit Extinguisher'),
+                                      content: SingleChildScrollView(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            TextField(
+                                              controller: editNameController,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Name',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            DropdownButtonFormField<String>(
+                                              value: editCategory,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Category',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              items: _categories.where((cat) => cat != 'All').map((String category) {
+                                                return DropdownMenuItem<String>(
+                                                  value: category,
+                                                  child: Text(category),
+                                                );
+                                              }).toList(),
+                                              onChanged: (String? newValue) {
+                                                if (newValue != null) {
+                                                  setState(() {
+                                                    editCategory = newValue;
+                                                  });
+                                                }
+                                              },
+                                            ),
+                                            const SizedBox(height: 16),
+                                            TextField(
+                                              controller: editNotesController,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Notes',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              maxLines: 2,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () async {
+                                            try {
+                                              await sortedAndFilteredDocs[index].reference.update({
+                                                'name': editNameController.text,
+                                                'category': editCategory,
+                                                'notes': editNotesController.text.trim(),
+                                              });
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Extinguisher updated!')),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(content: Text('Failed to update: \n$e')),
+                                                );
+                                              }
+                                            }
+                                            Navigator.pop(context);
+                                          },
+                                          child: const Text('Save'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 );
-                                if (pickedDate != null) {
-                                  TimeOfDay? pickedTime = await showTimePicker(
-                                    context: context,
-                                    initialTime: TimeOfDay.fromDateTime(expiry.isAfter(minDate) ? expiry : minDate),
-                                  );
-                                  if (pickedTime != null) {
-                                    final newExpiry = DateTime(
-                                      pickedDate.year,
-                                      pickedDate.month,
-                                      pickedDate.day,
-                                      pickedTime.hour,
-                                      pickedTime.minute,
-                                    );
-                                    if (newExpiry.isBefore(minDate)) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Expiry must be at least 10 days from now.')),
-                                        );
-                                      }
-                                      return;
-                                    }
-                                    try {
-                                      await sortedAndFilteredDocs[index].reference.update({
-                                        'expiry': Timestamp.fromDate(newExpiry),
-                                      });
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Expiry updated!')),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Failed to update expiry: \n$e')),
-                                        );
-                                      }
-                                    }
-                                  }
-                                }
                               },
                             ),
                             IconButton(
@@ -715,6 +799,26 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                             ),
                           ],
                         ),
+                        children: [
+                          if (notes != null && notes.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Notes:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(notes),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },
@@ -825,102 +929,286 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
 
   void _addExtinguisher() async {
     final TextEditingController nameController = TextEditingController();
+    final TextEditingController notesController = TextEditingController();
     DateTime? pickedDate;
     TimeOfDay? pickedTime;
     final DateTime minDate = DateTime.now().add(const Duration(days: 10));
     bool testingMode = false;
+    String selectedCategory = 'Other';
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Add New Extinguisher'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Extinguisher Name'),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Switch(
-                    value: testingMode,
-                    onChanged: (val) => setState(() => testingMode = val),
+        builder: (context, setState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.fire_extinguisher, color: Colors.deepPurple, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: const Text(
+                        'Add New Extinguisher',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: nameController,
+                          decoration: InputDecoration(
+                            labelText: 'Extinguisher Name',
+                            hintText: 'Enter a descriptive name',
+                            prefixIcon: const Icon(Icons.label),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: DropdownButtonFormField<String>(
+                            value: selectedCategory,
+                            decoration: const InputDecoration(
+                              labelText: 'Category',
+                              border: InputBorder.none,
+                              prefixIcon: Icon(Icons.category),
+                            ),
+                            items: _categories.where((cat) => cat != 'All').map((String category) {
+                              return DropdownMenuItem<String>(
+                                value: category,
+                                child: Text(category),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  selectedCategory = newValue;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: notesController,
+                          decoration: InputDecoration(
+                            labelText: 'Notes (optional)',
+                            hintText: 'Add any additional information',
+                            prefixIcon: const Icon(Icons.note),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                          ),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          elevation: 0,
+                          color: Colors.grey.shade50,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.timer, color: Colors.deepPurple),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Expiry Settings',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Switch(
+                                      value: testingMode,
+                                      onChanged: (val) => setState(() => testingMode = val),
+                                      activeColor: Colors.deepPurple,
+                                    ),
+                                    const Text('Testing Mode'),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () async {
+                                      pickedDate = await showDatePicker(
+                                        context: context,
+                                        initialDate: testingMode ? DateTime.now() : minDate,
+                                        firstDate: testingMode ? DateTime.now().subtract(const Duration(days: 365)) : minDate,
+                                        lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                                        builder: (context, child) {
+                                          return Theme(
+                                            data: Theme.of(context).copyWith(
+                                              colorScheme: const ColorScheme.light(
+                                                primary: Colors.deepPurple,
+                                              ),
+                                            ),
+                                            child: child!,
+                                          );
+                                        },
+                                      );
+                                      if (pickedDate != null) {
+                                        pickedTime = await showTimePicker(
+                                          context: context,
+                                          initialTime: const TimeOfDay(hour: 12, minute: 0),
+                                          builder: (context, child) {
+                                            return Theme(
+                                              data: Theme.of(context).copyWith(
+                                                colorScheme: const ColorScheme.light(
+                                                  primary: Colors.deepPurple,
+                                                ),
+                                              ),
+                                              child: child!,
+                                            );
+                                          },
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(Icons.calendar_today),
+                                    label: Flexible(
+                                      child: Text(
+                                        pickedDate != null && pickedTime != null
+                                            ? '${DateFormat('yyyy-MM-dd').format(pickedDate!)} ${pickedTime!.format(context)}'
+                                            : 'Pick Expiry Date & Time',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.deepPurple,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const Text('Testing Mode'),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () async {
-                  pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: testingMode ? DateTime.now() : minDate,
-                    firstDate: testingMode ? DateTime.now().subtract(const Duration(days: 365)) : minDate,
-                    lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
-                  );
-                  if (pickedDate != null) {
-                    pickedTime = await showTimePicker(
-                      context: context,
-                      initialTime: const TimeOfDay(hour: 12, minute: 0),
-                    );
-                  }
-                },
-                child: const Text('Pick Expiry Date & Time'),
-              ),
-            ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (nameController.text.isNotEmpty && pickedDate != null && pickedTime != null) {
+                            final newExpiry = DateTime(
+                              pickedDate!.year,
+                              pickedDate!.month,
+                              pickedDate!.day,
+                              pickedTime!.hour,
+                              pickedTime!.minute,
+                            );
+                            if (!testingMode && newExpiry.isBefore(minDate)) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Expiry must be at least 10 days from now.')),
+                                );
+                              }
+                              return;
+                            }
+                            try {
+                              final user = FirebaseAuth.instance.currentUser;
+                              await FirebaseFirestore.instance.collection('fire').add({
+                                'name': nameController.text,
+                                'expiry': Timestamp.fromDate(newExpiry),
+                                'userId': user?.uid,
+                                'category': selectedCategory,
+                                'notes': notesController.text.trim(),
+                              });
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Extinguisher added successfully!')),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to add extinguisher: \n$e')),
+                                );
+                              }
+                            }
+                            Navigator.pop(context);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Please fill in all required fields')),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Add Extinguisher'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (nameController.text.isNotEmpty && pickedDate != null && pickedTime != null) {
-                  final newExpiry = DateTime(
-                    pickedDate!.year,
-                    pickedDate!.month,
-                    pickedDate!.day,
-                    pickedTime!.hour,
-                    pickedTime!.minute,
-                  );
-                  if (!testingMode && newExpiry.isBefore(minDate)) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Expiry must be at least 10 days from now.')),
-                      );
-                    }
-                    return;
-                  }
-                  // Save to Firestore
-                  try {
-                    final user = FirebaseAuth.instance.currentUser;
-                    await FirebaseFirestore.instance.collection('fire').add({
-                      'name': nameController.text,
-                      'expiry': Timestamp.fromDate(newExpiry),
-                      'userId': user?.uid,
-                    });
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Extinguisher added to Firestore!')),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to add to Firestore: \n$e')),
-                      );
-                    }
-                  }
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Add'),
-            ),
-          ],
         ),
       ),
     );
