@@ -91,7 +91,7 @@ exports.sendExpiryEmail = onSchedule(
 
       // Compose email
       const mail = {
-        to: user.email,
+        to: [user.email],
         message: {
           subject: "Fire Extinguisher Expiry Alert",
           text:
