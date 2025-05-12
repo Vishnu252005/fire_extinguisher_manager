@@ -8,10 +8,13 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-        allow create: if request.auth != null;
+      // Allow read/write access to all users collection for authentication
+      allow read, write: if true;
     }
+    
     match /fire/{fireId} {
-      allow read, create, update, delete: if request.auth != null;
+      // Allow read/write access to fire collection
+      allow read, write: if true;
     }
   }
 }
