@@ -13,23 +13,49 @@ A Flutter app to manage fire extinguishers, track their expiry dates, and notify
 - **Profile Tab**: Placeholder for admin profile features.
 - **Email Notifications**: Automatic email alerts for expired or soon-to-expire extinguishers using Firebase Extensions and SMTP.
 
-## Installation
+## Getting Started
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/yourusername/fire_extinguisher_manager.git
-   cd fire_extinguisher_manager
-   ```
+### 1. Set Up Flutter
+- Install Flutter by following the [official guide](https://docs.flutter.dev/get-started/install).
+- Make sure you have Flutter and Dart in your PATH:
+  ```bash
+  flutter --version
+  dart --version
+  ```
 
-2. **Install dependencies**:
-   ```bash
-   flutter pub get
-   ```
+### 2. Clone the Repository
+```bash
+git clone https://github.com/vishnu252005/fire_extinguisher_manager.git
+cd fire_extinguisher_manager
+```
 
-3. **Run the app**:
-   ```bash
-   flutter run
-   ```
+### 3. Install Dependencies
+```bash
+flutter pub get
+```
+
+### 4. Run the App
+```bash
+flutter run
+```
+
+---
+
+### Optional: Deploy Firebase Rules and Functions
+
+#### Deploy Firestore Security Rules
+```bash
+firebase deploy --only firestore:rules
+```
+
+#### Deploy Cloud Functions
+```bash
+firebase deploy --only functions
+```
+
+> Make sure you have the [Firebase CLI](https://firebase.google.com/docs/cli) installed and are logged in with `firebase login`.
+
+---
 
 ## Usage
 
