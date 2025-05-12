@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
+import 'dart:async';
 
 // Constants
 class AppConstants {
@@ -320,9 +321,22 @@ class ExtinguisherListScreen extends StatefulWidget {
 class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
   int _selectedIndex = 0;
   bool _expiryDialogDismissed = false;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start timer to refresh every second
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {}); // This will trigger a rebuild
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel(); // Cancel the timer when disposing
     _expiryDialogDismissed = false;
     super.dispose();
   }
@@ -394,9 +408,6 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('fire').where('userId', isEqualTo: user?.uid).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
           if (snapshot.hasError) {
             return Center(child: Text('Error: \n'+snapshot.error.toString()));
           }
@@ -413,83 +424,42 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
             return expiry.isBefore(now.add(const Duration(minutes: 5)));
           }).toList();
 
-          // Show a more attractive MaterialBanner if any extinguisher is expiring within 5 minutes or already expired
-          if (soonToExpire.isNotEmpty) {
+          // Show a dialog in the middle of the screen on app open/refresh, only if not dismissed
+          if (soonToExpire.isNotEmpty && !_expiryDialogDismissed) {
             final names = soonToExpire
                 .map((doc) => (doc.data() as Map<String, dynamic>)['name'] ?? 'Unnamed')
                 .join(', ');
             Future.microtask(() {
-              ScaffoldMessenger.of(context).clearMaterialBanners();
-              ScaffoldMessenger.of(context).showMaterialBanner(
-                MaterialBanner(
-                  content: Row(
-                    children: [
-                      const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Attention! Expiring soon or expired: $names',
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
+              if (ModalRoute.of(context)?.isCurrent ?? true) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Row(
+                      children: const [
+                        Icon(Icons.warning_amber_rounded, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Expiry Alert'),
+                      ],
+                    ),
+                    content: Text(
+                      'The following extinguishers have expired or will expire soon:\n\n$names',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _expiryDialogDismissed = true;
+                          });
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text('Close'),
                       ),
                     ],
                   ),
-                  backgroundColor: Colors.orange.shade100,
-                  elevation: 4,
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).clearMaterialBanners();
-                      },
-                      child: const Text('DISMISS', style: TextStyle(color: Colors.deepOrange)),
-                    ),
-                  ],
-                ),
-              );
-            });
-            // Show a dialog in the middle of the screen on app open/refresh, only if not dismissed
-            if (!_expiryDialogDismissed) {
-              Future.microtask(() {
-                if (ModalRoute.of(context)?.isCurrent ?? true) {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Row(
-                        children: const [
-                          Icon(Icons.warning_amber_rounded, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Expiry Alert'),
-                        ],
-                      ),
-                      content: Text(
-                        'The following extinguishers have expired or will expire soon:\n\n$names',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _expiryDialogDismissed = true;
-                            });
-                            Navigator.of(context).pop();
-                          },
-                          child: const Text('Close'),
-                        ),
-                      ],
-                    ),
-                    barrierDismissible: true,
-                  );
-                }
-              });
-            }
-          } else {
-            Future.microtask(() {
-              ScaffoldMessenger.of(context).clearMaterialBanners();
+                  barrierDismissible: true,
+                );
+              }
             });
           }
 
@@ -829,9 +799,6 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
           .where('userId', isEqualTo: user?.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
         if (snapshot.hasError) {
           return Center(child: Text('Error: \n${snapshot.error.toString()}'));
         }
