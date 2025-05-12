@@ -322,23 +322,65 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
   int _selectedIndex = 0;
   bool _expiryDialogDismissed = false;
   Timer? _refreshTimer;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _sortBy = 'expiry'; // 'expiry', 'name', 'status'
 
   @override
   void initState() {
     super.initState();
-    // Start timer to refresh every second
     _refreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() {}); // This will trigger a rebuild
+        setState(() {});
       }
     });
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel(); // Cancel the timer when disposing
+    _refreshTimer?.cancel();
+    _searchController.dispose();
     _expiryDialogDismissed = false;
     super.dispose();
+  }
+
+  List<QueryDocumentSnapshot> _sortAndFilterDocs(List<QueryDocumentSnapshot> docs) {
+    final now = DateTime.now();
+    var filteredDocs = docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final name = (data['name'] ?? '').toString().toLowerCase();
+      return name.contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    filteredDocs.sort((a, b) {
+      final dataA = a.data() as Map<String, dynamic>;
+      final dataB = b.data() as Map<String, dynamic>;
+      final expiryA = (dataA['expiry'] as Timestamp?)?.toDate() ?? now;
+      final expiryB = (dataB['expiry'] as Timestamp?)?.toDate() ?? now;
+      final nameA = (dataA['name'] ?? '').toString();
+      final nameB = (dataB['name'] ?? '').toString();
+
+      switch (_sortBy) {
+        case 'name':
+          return nameA.compareTo(nameB);
+        case 'status':
+          final statusA = _getStatusValue(expiryA);
+          final statusB = _getStatusValue(expiryB);
+          return statusA.compareTo(statusB);
+        case 'expiry':
+        default:
+          return expiryA.compareTo(expiryB);
+      }
+    });
+
+    return filteredDocs;
+  }
+
+  int _getStatusValue(DateTime expiry) {
+    final now = DateTime.now();
+    if (expiry.isBefore(now)) return 0; // Expired
+    if (expiry.difference(now).inMinutes < 5) return 1; // Expiring soon
+    return 2; // Safe
   }
 
   @override
@@ -405,71 +447,142 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
     final user = FirebaseAuth.instance.currentUser;
     return Padding(
       padding: const EdgeInsets.all(12.0),
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('fire').where('userId', isEqualTo: user?.uid).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: \n'+snapshot.error.toString()));
-          }
-          final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) {
-            return const Center(child: Text('No extinguishers found.'));
-          }
-
-          final now = DateTime.now();
-          final soonToExpire = docs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final expiryTimestamp = data['expiry'] as Timestamp?;
-            final expiry = expiryTimestamp?.toDate() ?? now;
-            return expiry.isBefore(now.add(const Duration(minutes: 5)));
-          }).toList();
-
-          // Show a dialog in the middle of the screen on app open/refresh, only if not dismissed
-          if (soonToExpire.isNotEmpty && !_expiryDialogDismissed) {
-            final names = soonToExpire
-                .map((doc) => (doc.data() as Map<String, dynamic>)['name'] ?? 'Unnamed')
-                .join(', ');
-            Future.microtask(() {
-              if (ModalRoute.of(context)?.isCurrent ?? true) {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Row(
-                      children: const [
-                        Icon(Icons.warning_amber_rounded, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Expiry Alert'),
-                      ],
+      child: Column(
+        children: [
+          // Search and Sort Controls
+          Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search extinguishers...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
                     ),
-                    content: Text(
-                      'The following extinguishers have expired or will expire soon:\n\n$names',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _expiryDialogDismissed = true;
-                          });
-                          Navigator.of(context).pop();
-                        },
-                        child: const Text('Close'),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _buildSortButton('expiry', 'Expiry'),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _buildSortButton('name', 'Name'),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _buildSortButton('status', 'Status'),
+                        ),
                       ),
                     ],
                   ),
-                  barrierDismissible: true,
-                );
-              }
-            });
-          }
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Extinguisher List
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('fire')
+                  .where('userId', isEqualTo: user?.uid)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: \n'+snapshot.error.toString()));
+                }
+                final docs = snapshot.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return const Center(child: Text('No extinguishers found.'));
+                }
 
-          return Column(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  itemCount: docs.length,
+                final sortedAndFilteredDocs = _sortAndFilterDocs(docs);
+                if (sortedAndFilteredDocs.isEmpty) {
+                  return const Center(child: Text('No matching extinguishers found.'));
+                }
+
+                final now = DateTime.now();
+                final soonToExpire = sortedAndFilteredDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final expiryTimestamp = data['expiry'] as Timestamp?;
+                  final expiry = expiryTimestamp?.toDate() ?? now;
+                  return expiry.isBefore(now.add(const Duration(minutes: 5)));
+                }).toList();
+
+                // Show a dialog in the middle of the screen on app open/refresh, only if not dismissed
+                if (soonToExpire.isNotEmpty && !_expiryDialogDismissed) {
+                  final names = soonToExpire
+                      .map((doc) => (doc.data() as Map<String, dynamic>)['name'] ?? 'Unnamed')
+                      .join(', ');
+                  Future.microtask(() {
+                    if (ModalRoute.of(context)?.isCurrent ?? true) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Row(
+                            children: const [
+                              Icon(Icons.warning_amber_rounded, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('Expiry Alert'),
+                            ],
+                          ),
+                          content: Text(
+                            'The following extinguishers have expired or will expire soon:\n\n$names',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _expiryDialogDismissed = true;
+                                });
+                                Navigator.of(context).pop();
+                              },
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                        barrierDismissible: true,
+                      );
+                    }
+                  });
+                }
+
+                return ListView.builder(
+                  itemCount: sortedAndFilteredDocs.length,
                   itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
+                    final data = sortedAndFilteredDocs[index].data() as Map<String, dynamic>;
                     final name = data['name'] ?? 'Unnamed';
                     final expiryTimestamp = data['expiry'] as Timestamp?;
                     final expiry = expiryTimestamp?.toDate() ?? DateTime.now();
@@ -542,7 +655,7 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                                       return;
                                     }
                                     try {
-                                      await docs[index].reference.update({
+                                      await sortedAndFilteredDocs[index].reference.update({
                                         'expiry': Timestamp.fromDate(newExpiry),
                                       });
                                       if (context.mounted) {
@@ -584,7 +697,7 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                                 );
                                 if (confirm == true) {
                                   try {
-                                    await docs[index].reference.delete();
+                                    await sortedAndFilteredDocs[index].reference.delete();
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('Extinguisher deleted!')),
@@ -605,11 +718,33 @@ class _ExtinguisherListScreenState extends State<ExtinguisherListScreen> {
                       ),
                     );
                   },
-                ),
-              ),
-            ],
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSortButton(String sortType, String label) {
+    final isSelected = _sortBy == sortType;
+    return ElevatedButton(
+      onPressed: () {
+        setState(() {
+          _sortBy = sortType;
+        });
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? Colors.deepPurple : Colors.grey.shade200,
+        foregroundColor: isSelected ? Colors.white : Colors.black87,
+        elevation: isSelected ? 4 : 1,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 12),
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
