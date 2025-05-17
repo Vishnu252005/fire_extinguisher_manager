@@ -39,6 +39,11 @@ flutter pub get
 flutter run
 ```
 
+### 5. Documentation
+The project includes detailed documentation and visual aids in the `documents` folder:
+- `Fire_Extinguisher_Manager_Algorithm.docx`: Detailed algorithm and technical documentation
+- `flowchart.jpg`: Visual flowchart of the application's logic and workflow
+
 ---
 
 ### Optional: Deploy Firebase Rules and Functions
